@@ -1,0 +1,8 @@
+[package]
+name = "listener"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+libc = "0.2.0"

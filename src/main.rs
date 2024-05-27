@@ -1,0 +1,82 @@
+use std::fs;
+use std::os::raw::{c_int, c_void};
+use std::time::Instant;
+use tokio::net::UnixListener;
+use tokio::io::{AsyncReadExt};
+
+extern {
+    fn byteToInt (ptr_in: *mut c_void, len: c_int) -> *mut c_int;
+}
+const SOCKET_PATH: &str = "/tmp/socket1.sock";
+const BUFFER_SIZE: usize = 20;//1_000_000;
+const BUFFER_THRESHOLD: usize = BUFFER_SIZE - 4;
+
+#[tokio::main]
+async fn main() {
+    if fs::metadata(SOCKET_PATH).is_ok() {
+        if let Err(e) = fs::remove_file(SOCKET_PATH) {
+            eprintln!("Error removing socket file: {}", e);
+            return;
+        }
+    }
+    let listener = UnixListener::bind(SOCKET_PATH).unwrap();
+
+    let (socket, _) = listener.accept().await.unwrap();
+    // match listener.accept().await {
+    //     Ok(socket) =>{
+    //         println!("OK")
+    //     }
+    //     Err(e) => {
+    //         println!("Connection failed");
+    //     }
+    // };
+    let mut cnt_recv = 0;
+    let mut whole_bytes = 0;
+    let mut now = Instant::now();
+
+    let mut buffer = vec![0; BUFFER_SIZE];
+    let mut buffer_offset: usize = 0;
+    let lib_ptr = buffer.as_mut_ptr() as *mut c_void;
+    let lib_len_max = buffer.len() as c_int;
+    let mut reader = tokio::io::BufReader::new(socket);
+
+    loop {
+        let body_slice: &mut [u8] = &mut buffer[buffer_offset..];
+        match reader.read(body_slice).await {
+            Ok(len_recv) => {
+                if len_recv > body_slice.len() {
+                    println!("Error receiving data: data is to long");
+                    return;
+                };
+                buffer_offset += len_recv;
+                cnt_recv += len_recv;
+            },
+            Err(e) => {
+                eprintln!("Error receiving data: {:?}", e);
+                return;
+            }
+        };
+        println!("buffer {:?}", buffer);
+        unsafe {
+            //let _result = byteToInt(lib_ptr, lib_len_max);
+            // for i in 0..MAX_NUMBERS {
+            //     println!("result: {}", *result.offset(i.try_into().unwrap()));
+            // }
+        }
+        if now.elapsed().as_secs() >= 5 {
+            server_bandwidth(cnt_recv, &mut whole_bytes);
+            cnt_recv = 0;
+            now = Instant::now();
+        }
+
+        if buffer_offset >= BUFFER_THRESHOLD {
+            buffer.iter_mut().for_each(|x| *x = 0);
+            buffer_offset = 0;
+        }
+    }
+}
+
+fn server_bandwidth(cnt_bytes: usize, whole_bytes: &mut usize) {
+    *whole_bytes += cnt_bytes;
+    println!("{} bytes/sec, {} bytes total", cnt_bytes, *whole_bytes);
+}
