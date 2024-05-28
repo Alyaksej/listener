@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt};
 #[tokio::main]
 async fn main() {
     const SOCKET_PATH: &str = "/tmp/socket1.sock";
-    const BUFFER_SIZE: usize = 400_000_000;
+    const BUFFER_SIZE: usize = 1_000_000;
     const BUFFER_THRESHOLD: usize = BUFFER_SIZE - 200_000;
     // Remove socket file
     if fs::metadata(SOCKET_PATH).is_ok() {
@@ -32,21 +32,20 @@ async fn main() {
     let mut whole_bytes = 0;
 
     match listener.accept().await {
-        Ok((socket, addr)) => {
+        Ok((mut socket, addr)) => {
             println!("Got a client: {addr:?}");
             let mut now = Instant::now();
             let time = Instant::now();
 
             let mut buffer = vec![0; BUFFER_SIZE];
             let mut buffer_offset: usize = 0;
-            let mut reader = tokio::io::BufReader::new(socket);
 
             let lib_ptr = buffer.as_mut_ptr() as *mut c_void;
             let lib_len_max = buffer.len() as c_int;
 
             loop {
                 let body_slice: &mut [u8] = &mut buffer[buffer_offset..];
-                match reader.read(body_slice).await {
+                match socket.read(body_slice).await {
                     Ok(len_recv) => {
                         if len_recv > body_slice.len() {
                             println!("Error receiving data: data is to long");
@@ -88,5 +87,6 @@ async fn main() {
 
 fn server_bandwidth(cnt_bytes: usize, whole_bytes: &mut usize, time: Instant) {
     *whole_bytes += cnt_bytes;
-    println!("{} GB/sec\n{} GB total\n{} secs total work time\n________________", cnt_bytes / 1_000_000, *whole_bytes / 1_000_000, time.elapsed().as_secs());
+    println!("{} MB/sec\n{} MB total\n{} secs total work time\
+    \n________________", cnt_bytes / 1_000, *whole_bytes / 1_000, time.elapsed().as_secs());
 }
